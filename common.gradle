@@ -1,0 +1,62 @@
+/**
+* Export methods
+*
+*/
+ext{
+    loadConfiguration = this.&loadConfiguration
+}
+
+/**
+*
+* Load our per environment configuration
+*
+*
+*/
+def loadConfiguration() {
+    def environment = hasProperty('buildenv') ? buildenv : 'dev'
+    println "Environment is set to $environment"
+    ext.environment = environment
+    
+    def configFile = file('config.groovy')
+    def config = new ConfigSlurper(environment).parse(configFile.toURL())
+    ext.config = config
+}
+
+/**
+* 
+* prepareForRelease
+* 
+* This is a method that is used to remove the -SNAPSHOT from the version string.
+*
+* See http://confluence.ati.pri:5252/display/idKeySW/Git+Release+Commands
+*
+*/
+
+task prepareForRelease  << {
+    def components = version.split('\\.').collect { Integer.parseInt(it.replace('-SNAPSHOT', ''))}
+    def releaseVersion = components.join('.')
+    println("Replacing ${version} with ${releaseVersion}")
+    def newProps = file("gradle.properties").text.replace(version, releaseVersion)
+    file("./gradle.properties").text = newProps
+}
+
+/**
+* 
+* bumpVersion
+* 
+* This is a method that is used to bump the version string for the project. 
+* It basically takes version from gradle.properties and increments it by one and 
+* then updates the file. End result 1.0.0-SNAPSHOT goes to 1.0.1-SNAPSHOT.
+*
+* See http://confluence.ati.pri:5252/display/idKeySW/Git+Release+Commands
+*
+*/
+
+task bumpVersion  << {
+    def components = version.split('\\.').collect { Integer.parseInt(it.replace('-SNAPSHOT', ''))}
+    components[2] += 1
+    def nextIntegrationVersion = components.join('.')+"-SNAPSHOT"
+    println("Replacing ${version} with ${nextIntegrationVersion}")
+    def newProps = file("gradle.properties").text.replace(version, nextIntegrationVersion)
+    file("./gradle.properties").text = newProps
+}

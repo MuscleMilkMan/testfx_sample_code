@@ -1,0 +1,10 @@
+Manifest-Version: 1.0
+Implementation-Title: Sensor Pod GUI
+Implementation-Version: 0.0.0-SNAPSHOT
+SonicTouch-Evaluation-Application-Version: 0.0.0-SNAPSHOT
+Main-Class: com.sonavation.gui.sensorpod.application.MainApplication
+Built-By: eclipse
+Built-JDK: 1.8.0_65
+Built-Branch: eclipse
+Built-LastCommit: xxxx
+Built-Date: Wed Jun 01 15:00:00 EDT 2016

@@ -1,0 +1,213 @@
+apply plugin: "java"
+apply plugin: "checkstyle"
+apply plugin: "eclipse"
+apply plugin: "maven"
+apply from: "common.gradle"
+
+/**
+*
+*   Startup/Init
+*
+*/
+
+// get last commit on branch. This is used for manifest building etc...
+def workingBranch = getWorkingBranch();
+def lastCommitOnBranch = getLastCommitOnBranch();
+
+sourceCompatibility = JavaVersion.VERSION_1_8
+targetCompatibility = JavaVersion.VERSION_1_8
+[compileJava, compileTestJava]*.options*.encoding = "UTF-8"
+
+archivesBaseName="sonictouch-eval-app"
+
+// load our environment specific configuration
+loadConfiguration()
+
+println "Using ${config.maven.url} for publishing artifacts";
+println "Building ${version}";
+
+/**
+*
+*   Plugin Configuration
+*
+*/
+
+// checkstyle tweaks
+checkstyle{
+    // assign a good value to samedir for checkstyle.xml to find suppressions.xml
+    configProperties['samedir'] = new File("$rootDir/config/checkstyle/")
+    ignoreFailures = true
+}
+
+// turn off doclint crap from java 8
+if (JavaVersion.current().isJava8Compatible()) {
+    allprojects {
+        //noinspection SpellCheckingInspection
+        tasks.withType(Javadoc) {
+            // disable the crazy super-strict doclint tool in Java 8
+            //noinspection SpellCheckingInspection
+            options.addStringOption("Xdoclint:none", "-quiet")
+        }
+    }
+}
+
+task createJavaDocs(type: Javadoc) {
+    source = sourceSets.main.allJava
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = "2.1"
+}
+
+/**
+*
+*   Archive stuff
+*   
+*/  
+
+task zip(type: Zip) {
+    
+    into('docs') {
+        from createJavaDocs
+    }
+    
+    into( 'libs' ) {
+        from jar
+    }
+    
+    into( 'sample' ) {
+        from "$rootDir/sample/"
+    }
+    
+    into( 'sample/libs' ) {
+    	from jar
+    }
+    
+    from 'README.md'
+    
+    //This is the folder name inside the zip
+    into(project.name + '-' + project.version)
+}
+
+//create a single Jar with all dependencies
+configurations {
+    fatJarArchives
+}
+
+task fatJar(type: Jar) {    
+        
+       afterEvaluate { Project project ->
+            manifest {
+                attributes "Implementation-Title": "Sensor Pod GUI",
+                           "Implementation-Version": project.version,
+                           "SonicTouch-Evaluation-Application-Version": project.version,
+                           "Main-Class": "com.sonavation.gui.sensorpod.application.MainApplication",
+                           "Built-By": System.getProperty('user.name'),
+                           "Built-JDK": System.getProperty('java.version'),
+                           "Built-Branch": workingBranch,
+                           "Built-LastCommit": lastCommitOnBranch,
+                           "Built-Date": new Date()  
+            }
+            from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+            exclude "META-INF/*.RSA", "META-INF/*.SF","META-INF/*.DSA" 
+            with jar
+      }
+}
+
+artifacts {
+  fatJarArchives fatJar
+}
+
+uploadFatJarArchives {
+    repositories {
+        mavenDeployer {
+            repository(url: "${config.maven.url}"){
+                authentication(userName: "${config.maven.username}", 
+                                    password: "${config.maven.password}")
+            }
+        }
+    }
+}
+
+uploadArchives {
+    repositories {
+        mavenDeployer {
+            repository(url: "${config.maven.url}"){
+                authentication(userName: "${config.maven.username}", 
+                                    password: "${config.maven.password}")
+            }
+        }
+    }
+}
+
+/**
+*
+*   Testing support
+*
+*
+*/
+tasks.withType(JavaForkOptions) {
+    systemProperty "javax.net.ssl.keyStore", "${projectDir}/${config.testing.testKeyStorePath}"
+    systemProperty "javax.net.ssl.keyStorePassword", "${config.testing.testKeyStorePassword}"
+}
+
+/**
+*
+*   Stuff we need.
+*
+*/
+
+repositories {
+    maven { url "${config.maven.centralUrl}" }
+    maven { url "${config.maven.thirdPartyUrl}" }
+    maven { url "${config.maven.url}" }
+}
+
+dependencies {
+    //group:name:version
+    compile "ch.qos.logback:logback-classic:1.0.13"
+    compile "com.codeminders:hidapi:1.1"
+    compile "com.google.code.gson:gson:2.5"
+    compile "com.google.guava:guava:r05"
+    compile "com.jcabi:jcabi-manifests:0.7.5"
+    compile "com.sonavation:sonictouch-sdk-java:" + version
+    compile "net.logstash.logback:logstash-logback-encoder:4.0"
+    compile "org.bouncycastle:bcpkix-jdk15on:1.50"
+    compile "org.codehaus.janino:janino:2.7.8"
+    compile "org.slf4j:slf4j-api:1.7.6"
+
+    //group:name:version
+    testCompile "junit:junit:4.11"
+    testCompile "org.hamcrest:hamcrest-all:1.3"
+    testCompile "org.loadui:testFx:3.1.2"
+    testCompile "org.testfx:testfx-core:4.0.+"
+    testCompile "org.testfx:testfx-legacy:4.0.+", {
+        exclude group: "junit", module: "junit"
+    }
+}
+
+/**
+ * Get the name of the working branch of the project
+ *
+ * @return Name of the working branch
+ */
+def getWorkingBranch() {
+    // Triple double-quotes for the breaklines
+    def workingBranch = """git --git-dir=${rootDir}/.git
+                               --work-tree=${projectDir}
+                               rev-parse --abbrev-ref HEAD""".execute().text.trim()
+    println "Branch we are building from: " + workingBranch
+    return workingBranch
+}
+
+/**
+ * Get the md5 hash of the last commit on the branch when built.
+ *
+ * @return hash string 
+ */
+def getLastCommitOnBranch() {
+    // Triple double-quotes for the breaklines
+    def lastCommitHash = "git log -n 1 --pretty=format:%H".execute().text.trim()
+    println "Last commit on branch: " + lastCommitHash
+    return lastCommitHash
+}
